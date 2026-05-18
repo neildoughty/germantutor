@@ -10,6 +10,7 @@ const state = {
   micState: 'speaking',
   listenTime: 0,
   listenInterval: null,
+  silenceTimer: null,
   transcript: '',
   markingResult: null,
   isMarking: false,
@@ -139,12 +140,13 @@ function renderQuestion() {
         </button>
         <p class="mic-status" id="mic-status" data-state="speaking">Speaking the question…</p>
         <button class="mic-submit" id="mic-submit" style="display:none">
-          Done answering ${I.arrowSm}
+          Done ✓
         </button>
       </div>
       <div class="transcript-display" id="transcript-display"></div>
     </div>
     <footer class="q-footer">
+      ${state.qIndex > 0 ? `<button class="ghost-btn" id="prev-btn">← Previous</button>` : ''}
       <button class="ghost-btn" id="hear-again-btn">${I.refresh} Hear again</button>
       <button class="ghost-btn" id="skip-btn">Skip ${I.skip}</button>
     </footer>`;
@@ -154,6 +156,7 @@ function renderQuestion() {
   el.querySelector('#mic-submit').addEventListener('click', () => { stopListening(); submitAnswer(); });
   el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q));
   el.querySelector('#skip-btn').addEventListener('click', () => { state.transcript = ''; submitAnswer(); });
+  if (state.qIndex > 0) el.querySelector('#prev-btn').addEventListener('click', prevQuestion);
   return el;
 }
 
@@ -301,7 +304,7 @@ function startSession() {
   Object.assign(state, {
     screen: 'question',
     qIndex: 0,
-    activeQuestions: Array.from({length: QUESTIONS.length}, (_, i) => i),
+    activeQuestions: shuffleArray(Array.from({length: QUESTIONS.length}, (_, i) => i)),
     scores: [],
     streak: 0,
     markingResult: null,
@@ -319,7 +322,7 @@ function startWeakSession() {
   Object.assign(state, {
     screen: 'question',
     qIndex: 0,
-    activeQuestions: weakIndices,
+    activeQuestions: shuffleArray(weakIndices),
     scores: [],
     streak: 0,
     markingResult: null,
@@ -338,6 +341,22 @@ function exitSession() {
   clearListenTimer();
   state.screen = 'welcome';
   render();
+}
+
+function prevQuestion() {
+  stopAudio();
+  stopListening();
+  clearListenTimer();
+  clearSilenceTimer();
+  // Remove the score recorded for the question we're returning to
+  state.scores.splice(state.qIndex - 1, 1);
+  state.streak = 0;
+  state.qIndex--;
+  state.markingResult = null;
+  state.transcript = '';
+  state.screen = 'question';
+  render();
+  speakQuestion(currentQuestion());
 }
 
 function nextQuestion() {
@@ -444,9 +463,18 @@ function startListening() {
 
   const rec = new SR();
   rec.lang = 'de-DE';
-  rec.continuous = false;
+  rec.continuous = true;
   rec.interimResults = true;
   state.recognition = rec;
+
+  const SILENCE_MS = 3500;
+
+  const resetSilenceTimer = () => {
+    clearSilenceTimer();
+    state.silenceTimer = setTimeout(() => {
+      if (state.micState === 'listening') { stopListening(); submitAnswer(); }
+    }, SILENCE_MS);
+  };
 
   rec.onresult = (event) => {
     let interim = '', final = '';
@@ -457,22 +485,27 @@ function startListening() {
     state.transcript = final || interim;
     const el = document.getElementById('transcript-display');
     if (el) el.textContent = state.transcript;
+    resetSilenceTimer();
   };
 
   rec.onend = () => {
+    clearSilenceTimer();
     state.recognition = null;
     if (state.micState === 'listening') submitAnswer();
   };
 
   rec.onerror = (e) => {
+    clearSilenceTimer();
     state.recognition = null;
     if (e.error !== 'aborted' && state.screen === 'question') showTextInput();
   };
 
   rec.start();
+  resetSilenceTimer();
 }
 
 function stopListening() {
+  clearSilenceTimer();
   if (state.recognition) {
     state.recognition.stop();
     state.recognition = null;
@@ -563,6 +596,10 @@ function clearListenTimer() {
   if (state.listenInterval) { clearInterval(state.listenInterval); state.listenInterval = null; }
 }
 
+function clearSilenceTimer() {
+  if (state.silenceTimer) { clearTimeout(state.silenceTimer); state.silenceTimer = null; }
+}
+
 // ─── Answer marking ───────────────────────────────────────────────────────────
 async function submitAnswer() {
   if (state.isMarking) return;
@@ -603,6 +640,14 @@ async function submitAnswer() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function escapeHTML(s) {
   return String(s)
     .replace(/&/g, '&amp;')
