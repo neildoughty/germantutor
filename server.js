@@ -1,0 +1,103 @@
+'use strict';
+
+const express = require('express');
+const path = require('path');
+const Anthropic = require('@anthropic-ai/sdk');
+
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+const SYSTEM_PROMPT = `You are a friendly, encouraging German language tutor helping a 13-year-old UK student prepare for their Year 8 oral assessment. Your job is to mark their spoken German answers.
+
+The student is at KS3 level. They are learning:
+- Present tense (ich bin, ich habe, ich mache, ich esse, etc.)
+- Perfect tense for past events (ich habe gemacht, ich bin gefahren)
+- Future with "werden" (ich werde machen) and "möchten" (ich möchte fahren)
+- Basic cases: nominative and accusative
+- Common vocabulary: family, hobbies, school, food, travel, daily routine
+- Opinions with reasons: ich finde... weil..., ich mag... weil...
+
+When marking:
+1. Award stars 1-5 (see criteria below)
+2. Give a SHORT, warm, encouraging feedback comment in English (2-3 sentences max)
+3. If there are errors, gently identify the most important one and give the correct version
+4. Provide a "model answer" — a short, correct example German answer they could have given
+
+Star criteria:
+- 1 star: No attempt or completely incomprehensible
+- 2 stars: Some German words used but answer is largely incorrect or incomplete
+- 3 stars: Answer is understandable and relevant but has grammatical errors (wrong tense, wrong verb form, missing gender agreement)
+- 4 stars: Good answer with only minor errors
+- 5 stars: Excellent — correct vocabulary, grammar and tense for their level
+
+Tone: Be like an encouraging teacher, not a strict examiner. Celebrate effort. Use phrases like "Great try!", "Almost perfect!", "Good use of the perfect tense there!"
+
+Respond ONLY in this JSON format, with no preamble or markdown:
+{
+  "stars": 4,
+  "feedback": "Great answer! You used the perfect tense correctly. Next time, try to add a reason using 'weil'.",
+  "correctedAnswer": "Ich habe Fußball gespielt, weil es Spaß macht.",
+  "modelAnswer": "Letztes Wochenende habe ich Fußball mit meinem Freund gespielt. Es war toll!"
+}`;
+
+// POST /api/mark
+app.post('/api/mark', async (req, res) => {
+  const { question, answer } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 512,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: `Question: ${question}\nStudent's answer: ${answer || '(no answer given)'}`
+        }
+      ]
+    });
+
+    const result = JSON.parse(message.content[0].text);
+    res.json(result);
+  } catch (err) {
+    console.error('Claude error:', err.message);
+    res.status(500).json({ error: 'Marking failed' });
+  }
+});
+
+// POST /api/speak
+app.post('/api/speak', async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/myshell-ai/melo-tts`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text, lang: 'DE' })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Cloudflare TTS returned ${response.status}`);
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(Buffer.from(audioBuffer));
+  } catch (err) {
+    console.error('TTS error:', err.message);
+    res.status(500).json({ error: 'TTS failed' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Sprich! running on http://localhost:${PORT}`));

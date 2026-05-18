@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: german-tutor
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
