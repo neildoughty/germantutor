@@ -355,10 +355,48 @@ function nextQuestion() {
 }
 
 // ─── TTS ──────────────────────────────────────────────────────────────────────
+function getGermanVoice() {
+  return new Promise(resolve => {
+    const pick = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const de = voices.filter(v => v.lang.startsWith('de'));
+      if (!de.length) return null;
+      return de.find(v => v.name === 'Anna')          // macOS default German
+          || de.find(v => v.name.includes('Anna'))
+          || de.find(v => v.localService)              // any local German voice
+          || de[0];
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) return resolve(pick());
+
+    // voices haven't loaded yet — wait for the event
+    window.speechSynthesis.onvoiceschanged = () => resolve(pick());
+  });
+}
+
 async function speakQuestion(text) {
   stopAudio();
   setMicState('speaking');
 
+  // Try browser TTS first — sounds more natural on Mac/Windows
+  const voice = await getGermanVoice();
+  if (voice) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.voice = voice;
+    utter.lang = 'de-DE';
+    utter.rate = 0.88;
+    utter.onend = () => { if (state.screen === 'question') setMicState('idle'); };
+    utter.onerror = () => cloudflareTTS(text);
+    window.speechSynthesis.speak(utter);
+    return;
+  }
+
+  // No German voice installed — fall back to Cloudflare TTS
+  await cloudflareTTS(text);
+}
+
+async function cloudflareTTS(text) {
   try {
     const res = await fetch('/api/speak', {
       method: 'POST',
@@ -380,20 +418,12 @@ async function speakQuestion(text) {
     audio.onerror = () => {
       URL.revokeObjectURL(url);
       state.audioObj = null;
-      fallbackTTS(text);
+      if (state.screen === 'question') setMicState('idle');
     };
     audio.play();
   } catch {
-    fallbackTTS(text);
+    if (state.screen === 'question') setMicState('idle');
   }
-}
-
-function fallbackTTS(text) {
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = 'de-DE';
-  utter.rate = 0.9;
-  utter.onend = () => { if (state.screen === 'question') setMicState('idle'); };
-  window.speechSynthesis.speak(utter);
 }
 
 function stopAudio() {
