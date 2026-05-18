@@ -5,7 +5,7 @@ services:
     buildCommand: npm install
     startCommand: node server.js
     envVars:
-      - key: ANTHROPIC_API_KEY
+      - key: GROQ_API_KEY
         sync: false
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false

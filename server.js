@@ -2,7 +2,7 @@
 
 const express = require('express');
 const path = require('path');
-const Anthropic = require('@anthropic-ai/sdk');
+const Groq = require('groq-sdk');
 
 const app = express();
 app.use(express.json());
@@ -47,20 +47,17 @@ app.post('/api/mark', async (req, res) => {
   if (!question) return res.status(400).json({ error: 'question required' });
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const completion = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
       messages: [
-        {
-          role: 'user',
-          content: `Question: ${question}\nStudent's answer: ${answer || '(no answer given)'}`
-        }
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Question: ${question}\nStudent's answer: ${answer || '(no answer given)'}` }
       ]
     });
 
-    const result = JSON.parse(message.content[0].text);
+    const result = JSON.parse(completion.choices[0].message.content);
     res.json(result);
   } catch (err) {
     console.error('Claude error:', err.message);
