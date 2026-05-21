@@ -43,8 +43,12 @@ Respond ONLY in this JSON format, with no preamble or markdown:
 
 // POST /api/mark
 app.post('/api/mark', async (req, res) => {
-  const { question, answer } = req.body;
+  const { question, answer, level } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
+
+  const levelNote = level === 'Higher'
+    ? 'The student is attempting Higher tier (grades 4–9). Reward use of multiple tenses, complex structures, and extended answers.'
+    : 'The student is attempting Foundation tier (grades 1–5). Focus on basic vocabulary and simple grammatical structures.';
 
   try {
     const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -52,7 +56,7 @@ app.post('/api/mark', async (req, res) => {
       model: 'llama-3.3-70b-versatile',
       max_tokens: 512,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\n${levelNote}` },
         { role: 'user', content: `Question: ${question}\nStudent's answer: ${answer || '(no answer given)'}` }
       ]
     });
@@ -60,8 +64,63 @@ app.post('/api/mark', async (req, res) => {
     const result = JSON.parse(completion.choices[0].message.content);
     res.json(result);
   } catch (err) {
-    console.error('Claude error:', err.message);
+    console.error('Groq error:', err.message);
     res.status(500).json({ error: 'Marking failed' });
+  }
+});
+
+// GET /api/syllabus — returns the AQA GCSE German theme/topic structure
+app.get('/api/syllabus', (req, res) => {
+  res.json(require('./data/aqa-gcse-german.json'));
+});
+
+// POST /api/questions/generate
+// Body: { theme, level, count }
+//   theme  — theme name, or "all" for a quickfire mix across every theme
+//   level  — "Foundation" | "Higher"
+//   count  — number of questions (default 5)
+app.post('/api/questions/generate', async (req, res) => {
+  const { theme, level, count = 5 } = req.body;
+  if (!level) return res.status(400).json({ error: 'level required' });
+
+  const levelGuide = level === 'Higher'
+    ? 'Higher tier: complex vocabulary, multiple tenses (present, perfect, future, imperfect), subordinate clauses, opinions with justification'
+    : 'Foundation tier: simple vocabulary, mainly present tense with some perfect and future tense, straightforward questions';
+
+  const scope = (!theme || theme === 'all')
+    ? 'Spread questions evenly across all three AQA GCSE German themes: People & lifestyle, Popular culture, and Communication & the world around us.'
+    : `Focus on the AQA GCSE German theme: "${theme}". Spread questions across the different topics within this theme.`;
+
+  try {
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const completion = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate exactly ${count} spoken German questions for a GCSE oral practice app.
+
+${scope}
+Level: ${level} — ${levelGuide}
+
+Requirements:
+- Questions must be in German only
+- Vary the types: descriptions, opinions, past experiences, future plans, comparisons
+- Natural oral exam questions, not written exercises
+- Return ONLY a valid JSON array of strings, no explanation, no markdown:
+["Question 1?", "Question 2?", ...]`
+        }
+      ]
+    });
+
+    const raw = completion.choices[0].message.content.trim();
+    const questions = JSON.parse(raw);
+    if (!Array.isArray(questions)) throw new Error('Not an array');
+    res.json({ questions });
+  } catch (err) {
+    console.error('Question generation error:', err.message);
+    res.status(500).json({ error: 'Question generation failed' });
   }
 });
 

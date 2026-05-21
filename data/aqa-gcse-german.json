@@ -1,0 +1,40 @@
+{
+  "spec": "AQA GCSE German (8662)",
+  "firstTeaching": 2024,
+  "themes": [
+    {
+      "id": "people-lifestyle",
+      "name": "People and lifestyle",
+      "icon": "👥",
+      "topics": [
+        { "id": "identity", "name": "Identity and relationships with others", "icon": "💬" },
+        { "id": "healthy-living", "name": "Healthy living and lifestyle", "icon": "🏃" },
+        { "id": "education-work", "name": "Education and work", "icon": "📚" }
+      ]
+    },
+    {
+      "id": "popular-culture",
+      "name": "Popular culture",
+      "icon": "🎬",
+      "topics": [
+        { "id": "free-time", "name": "Free-time activities", "icon": "🎮" },
+        { "id": "customs", "name": "Customs, festivals and celebrations", "icon": "🎉" },
+        { "id": "celebrity", "name": "Celebrity culture", "icon": "⭐" }
+      ]
+    },
+    {
+      "id": "communication-world",
+      "name": "Communication and the world around us",
+      "icon": "🌍",
+      "topics": [
+        { "id": "travel", "name": "Travel and tourism", "icon": "✈️" },
+        { "id": "media-tech", "name": "Media and technology", "icon": "📱" },
+        { "id": "environment", "name": "The environment and where people live", "icon": "🏙️" }
+      ]
+    }
+  ],
+  "levels": [
+    { "id": "Foundation", "grades": "1–5", "desc": "Simpler vocabulary, present tense focus" },
+    { "id": "Higher",     "grades": "4–9", "desc": "Complex language, multiple tenses" }
+  ]
+}
