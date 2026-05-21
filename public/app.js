@@ -15,7 +15,9 @@ const state = {
   markingResult: null,
   isMarking: false,
   audioObj: null,
-  recognition: null,
+  mediaStream: null,
+  mediaRecorder: null,
+  audioChunks: [],
 };
 
 // ─── Computed helpers ─────────────────────────────────────────────────────────
@@ -219,9 +221,9 @@ function renderQuestion() {
 
   el.querySelector('#back-btn').addEventListener('click', backToThemes);
   el.querySelector('#mic-btn').addEventListener('click', handleMicTap);
-  el.querySelector('#mic-submit').addEventListener('click', () => { stopListening(); submitAnswer(); });
+  el.querySelector('#mic-submit').addEventListener('click', () => stopRecording().then(blob => submitAnswer(blob)));
   el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q.de));
-  el.querySelector('#skip-btn').addEventListener('click', () => { state.transcript = ''; submitAnswer(); });
+  el.querySelector('#skip-btn').addEventListener('click', () => stopRecording().then(() => { state.transcript = ''; submitAnswer(null); }));
   return el;
 }
 
@@ -369,7 +371,7 @@ function render() {
 function pickTheme(id) {
   stopAudio();
   window.speechSynthesis.cancel();
-  stopListening();
+  stopRecording();
 
   const theme = window.THEMES.find(t => t.id === id);
   const pool = theme.isMix ? shuffle(theme.questions).slice(0, 10) : shuffle(theme.questions);
@@ -418,7 +420,7 @@ function startWeakSession() {
 function backToThemes() {
   stopAudio();
   window.speechSynthesis.cancel();
-  stopListening();
+  stopRecording();
   clearListenTimer();
   // Reset to default palette accent
   const app = document.querySelector('.sprich-app');
@@ -511,46 +513,69 @@ function stopAudio() {
   window.speechSynthesis.cancel();
 }
 
-// ─── STT ──────────────────────────────────────────────────────────────────────
-function startListening() {
+// ─── Recording (MediaRecorder → Groq Whisper) ─────────────────────────────────
+async function startRecording() {
   setMicState('listening');
   state.transcript = '';
+  state.audioChunks = [];
 
-  const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
-  if (!SR) { showTextInput(); return; }
+  if (!navigator.mediaDevices?.getUserMedia) { showTextInput(); return; }
 
-  const rec = new SR();
-  rec.lang = 'de-DE';
-  rec.continuous = false;
-  rec.interimResults = true;
-  state.recognition = rec;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.mediaStream = stream;
 
-  rec.onresult = (event) => {
-    let interim = '', final = '';
-    for (const r of event.results) {
-      if (r.isFinal) final += r[0].transcript;
-      else interim += r[0].transcript;
-    }
-    state.transcript = final || interim;
-    const el = document.getElementById('transcript-display');
-    if (el) el.textContent = state.transcript;
-  };
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+      .find(t => MediaRecorder.isTypeSupported(t)) || '';
 
-  rec.onend = () => {
-    state.recognition = null;
-    if (state.micState === 'listening') submitAnswer();
-  };
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    state.mediaRecorder = rec;
 
-  rec.onerror = (e) => {
-    state.recognition = null;
-    if (e.error !== 'aborted' && state.screen === 'question') showTextInput();
-  };
-
-  rec.start();
+    rec.ondataavailable = e => { if (e.data.size > 0) state.audioChunks.push(e.data); };
+    rec.start();
+  } catch {
+    showTextInput();
+  }
 }
 
-function stopListening() {
-  if (state.recognition) { state.recognition.stop(); state.recognition = null; }
+function stopRecording() {
+  return new Promise(resolve => {
+    const rec = state.mediaRecorder;
+    if (!rec || rec.state === 'inactive') { resolve(null); return; }
+
+    rec.addEventListener('stop', () => {
+      const blob = new Blob(state.audioChunks, { type: rec.mimeType || 'audio/webm' });
+      state.audioChunks = [];
+      state.mediaRecorder = null;
+      if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach(t => t.stop());
+        state.mediaStream = null;
+      }
+      resolve(blob.size > 100 ? blob : null);
+    }, { once: true });
+
+    rec.stop();
+  });
+}
+
+async function transcribeAudio(blob) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = reader.result.split(',')[1];
+        const res = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio: base64, mimeType: blob.type }),
+        });
+        const { transcript } = res.ok ? await res.json() : {};
+        resolve(transcript || '');
+      } catch { resolve(''); }
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(blob);
+  });
 }
 
 function showTextInput() {
@@ -560,25 +585,22 @@ function showTextInput() {
   const div = document.createElement('div');
   div.className = 'text-fallback';
   div.innerHTML = `
-    <p style="font-size:14px;color:var(--text-mute)">Couldn't hear you — type your answer instead</p>
+    <p style="font-size:14px;color:var(--text-mute)">Microphone unavailable — type your answer instead</p>
     <div style="display:flex;gap:8px;width:min(400px,90vw)">
       <input id="text-answer" type="text" placeholder="Type in German…" />
       <button class="btn-primary" id="text-submit">Submit</button>
     </div>`;
   micArea.appendChild(div);
   div.querySelector('#text-answer').focus();
-  const submit = () => {
-    state.transcript = div.querySelector('#text-answer').value;
-    submitAnswer();
-  };
+  const submit = () => { state.transcript = div.querySelector('#text-answer').value; submitAnswer(null); };
   div.querySelector('#text-submit').addEventListener('click', submit);
   div.querySelector('#text-answer').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 }
 
 // ─── Mic UI ───────────────────────────────────────────────────────────────────
 function handleMicTap() {
-  if (state.micState === 'idle') startListening();
-  else if (state.micState === 'listening') { stopListening(); submitAnswer(); }
+  if (state.micState === 'idle') startRecording();
+  else if (state.micState === 'listening') stopRecording().then(blob => submitAnswer(blob));
 }
 
 function setMicState(s) { state.micState = s; updateMicUI(); }
@@ -632,9 +654,8 @@ function clearListenTimer() {
 }
 
 // ─── Answer marking ───────────────────────────────────────────────────────────
-async function submitAnswer() {
+async function submitAnswer(blob = null) {
   if (state.isMarking) return;
-  stopListening();
   clearListenTimer();
 
   const q = currentQ();
@@ -642,6 +663,11 @@ async function submitAnswer() {
   state.markingResult = null;
   state.screen = 'feedback';
   render();
+
+  // Transcribe audio → transcript (skipped when blob is null, e.g. Skip)
+  if (blob) {
+    state.transcript = await transcribeAudio(blob);
+  }
 
   try {
     const res = await fetch('/api/mark', {

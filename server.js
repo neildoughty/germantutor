@@ -155,5 +155,29 @@ app.post('/api/speak', async (req, res) => {
   }
 });
 
+// POST /api/transcribe
+// Body: { audio: base64String, mimeType: string }
+app.post('/api/transcribe', async (req, res) => {
+  const { audio, mimeType } = req.body;
+  if (!audio) return res.status(400).json({ error: 'audio required' });
+
+  try {
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const buffer = Buffer.from(audio, 'base64');
+    const file = new File([buffer], 'recording.webm', { type: mimeType || 'audio/webm' });
+
+    const result = await client.audio.transcriptions.create({
+      file,
+      model: 'whisper-large-v3-turbo',
+      language: 'de',
+    });
+
+    res.json({ transcript: result.text || '' });
+  } catch (err) {
+    console.error('Transcription error:', err.message);
+    res.status(500).json({ error: 'Transcription failed' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Sprich! running on http://localhost:${PORT}`));
