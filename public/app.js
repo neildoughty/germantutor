@@ -114,7 +114,7 @@ function themeCardHTML(theme, large = false) {
   const accent     = `oklch(0.7 0.18 ${theme.accentHue})`;
   const accentSoft = `oklch(0.7 0.18 ${theme.accentHue} / 0.18)`;
   const accentGlow = `oklch(0.7 0.18 ${theme.accentHue} / 0.35)`;
-  const count = theme.isMix ? 8 : theme.questions.length;
+  const count = theme.isMix ? 10 : theme.questions.length;
   const topicsHTML = theme.isMix ? '' : `
     <ul class="theme-card-topics">
       ${theme.topics.map(t => `<li>${escapeHTML(t)}</li>`).join('')}
@@ -372,7 +372,7 @@ function pickTheme(id) {
   stopListening();
 
   const theme = window.THEMES.find(t => t.id === id);
-  const pool = theme.isMix ? shuffle(theme.questions).slice(0, 8) : [...theme.questions];
+  const pool = theme.isMix ? shuffle(theme.questions).slice(0, 10) : shuffle(theme.questions);
 
   // Tint global accent to match the chosen theme
   const app = document.querySelector('.sprich-app');
