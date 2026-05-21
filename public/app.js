@@ -2,15 +2,15 @@
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
-  screen: 'welcome',
+  screen: 'welcome',    // 'welcome' | 'question' | 'feedback' | 'end'
+  themeId: null,
+  questionPool: [],     // [{de, en, topic}] for this session
   qIndex: 0,
-  activeQuestions: [],  // indices into QUESTIONS
-  scores: [],
+  scores: [],           // star score per answered question
   streak: 0,
-  micState: 'speaking',
+  micState: 'speaking', // 'speaking' | 'idle' | 'listening'
   listenTime: 0,
   listenInterval: null,
-  silenceTimer: null,
   transcript: '',
   markingResult: null,
   isMarking: false,
@@ -18,37 +18,53 @@ const state = {
   recognition: null,
 };
 
-function totalStars() { return state.scores.reduce((a, b) => a + b, 0); }
-function weakCount()   { return state.scores.filter(s => s < 3).length; }
-function currentQuestion() { return QUESTIONS[state.activeQuestions[state.qIndex]]; }
-function totalQ()  { return state.activeQuestions.length; }
-function isLast()  { return state.qIndex >= state.activeQuestions.length - 1; }
+// ─── Computed helpers ─────────────────────────────────────────────────────────
+const totalStars   = () => state.scores.reduce((a, b) => a + b, 0);
+const weakCount    = () => state.scores.filter(s => s < 3).length;
+const currentQ     = () => state.questionPool[state.qIndex];
+const totalQ       = () => state.questionPool.length;
+const isLast       = () => state.qIndex >= state.questionPool.length - 1;
+const currentTheme = () => window.THEMES.find(t => t.id === state.themeId);
+
+function escapeHTML(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function shuffle(arr) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 // ─── SVG icons ────────────────────────────────────────────────────────────────
 const I = {
-  arrowSm: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`,
-  arrowLg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`,
-  close:   `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
-  refresh: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
-  refreshLg:`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
-  skip:    `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`,
-  mic:     `<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`,
-  weak:    `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6M12 8V4M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24M2 12h6M16 12h6"/></svg>`,
-  play:    `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`,
+  back:      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`,
+  arrowSm:   `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`,
+  refresh:   `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+  refreshLg: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+  skip:      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`,
+  mic:       `<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`,
+  weak:      `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6M12 8V4M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24M2 12h6M16 12h6"/></svg>`,
+  play:      `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`,
+  cardArrow: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`,
 };
 
-function starSVG(size, filled) {
+function starSVG(size, filled, earned = true) {
   const id = `gold-${size}-${filled ? 1 : 0}`;
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}">
-    <defs>
-      <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#fbbf24"/>
-        <stop offset="100%" stop-color="#f59e0b"/>
-      </linearGradient>
-    </defs>
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient></defs>
     <path d="M12 2.5l2.92 6.26 6.88.78-5.1 4.7 1.42 6.76L12 17.55 5.88 21l1.42-6.76-5.1-4.7 6.88-.78L12 2.5z"
       fill="${filled ? `url(#${id})` : 'transparent'}"
-      stroke="${filled ? '#f59e0b' : 'rgba(148,163,184,.32)'}"
+      stroke="${earned ? '#f59e0b' : 'rgba(148,163,184,.32)'}"
       stroke-width="1.4" stroke-linejoin="round"/>
   </svg>`;
 }
@@ -59,7 +75,7 @@ function waveformHTML(micState) {
               : micState === 'speaking'  ? 'var(--accent-speak)'
               : 'rgba(148,163,184,.35)';
   const active = micState === 'speaking' || micState === 'listening';
-  const bars = Array.from({length: 28}, (_, i) => {
+  const bars = Array.from({ length: 28 }, (_, i) => {
     const s = Math.sin(i * 12.9898) * 43758.5453;
     const h = 0.35 + (s - Math.floor(s)) * 0.6;
     return `<span class="wf-bar" style="--h:${h};--i:${i};background:${color};animation-play-state:${active ? 'running' : 'paused'}"></span>`;
@@ -69,57 +85,108 @@ function waveformHTML(micState) {
 
 // ─── Top bar ──────────────────────────────────────────────────────────────────
 function topBarHTML() {
+  const theme = currentTheme();
   const pct = Math.min(100, (state.qIndex / totalQ()) * 100);
   const streakPill = state.streak >= 3
-    ? `<div class="streak-pill" aria-label="${state.streak} streak"><span class="streak-flame">🔥</span><span>${state.streak}</span></div>`
-    : '';
+    ? `<div class="streak-pill"><span class="streak-flame">🔥</span><span class="streak-num">${state.streak}</span></div>` : '';
   return `
     <header class="topbar">
-      <button class="topbar-exit" id="exit-btn" aria-label="Exit session">${I.close}</button>
+      <button class="topbar-back" id="back-btn" aria-label="Back to themes">
+        ${I.back}
+        <span class="topbar-back-label">
+          <span class="topbar-back-eyebrow">Theme</span>
+          <span class="topbar-back-name">${escapeHTML(theme?.name || '')}</span>
+        </span>
+      </button>
       <div class="progress">
-        <div class="progress-track">
-          <div class="progress-fill" style="width:${pct}%"></div>
-        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div class="progress-label">Question <b>${state.qIndex + 1}</b> of ${totalQ()}</div>
       </div>
       <div class="topbar-right">
         ${streakPill}
-        <div class="star-counter" aria-label="${totalStars()} stars">
-          ${starSVG(20, true)}
-          <span>${totalStars()}</span>
-        </div>
+        <div class="star-counter">${starSVG(20, true)}<span>${totalStars()}</span></div>
       </div>
     </header>`;
 }
 
-// ─── Welcome screen ───────────────────────────────────────────────────────────
+// ─── Theme card ───────────────────────────────────────────────────────────────
+function themeCardHTML(theme, large = false) {
+  const accent     = `oklch(0.7 0.18 ${theme.accentHue})`;
+  const accentSoft = `oklch(0.7 0.18 ${theme.accentHue} / 0.18)`;
+  const accentGlow = `oklch(0.7 0.18 ${theme.accentHue} / 0.35)`;
+  const count = theme.isMix ? 8 : theme.questions.length;
+  const topicsHTML = theme.isMix ? '' : `
+    <ul class="theme-card-topics">
+      ${theme.topics.map(t => `<li>${escapeHTML(t)}</li>`).join('')}
+    </ul>`;
+  const pillHTML = theme.isMix
+    ? `<div class="theme-card-pill"><span>🎲</span> Random</div>` : '';
+
+  return `
+    <button class="theme-card${large ? ' is-large' : ''}${theme.isMix ? ' is-mix' : ''}"
+      data-theme-id="${theme.id}"
+      style="--card-accent:${accent};--card-accent-soft:${accentSoft};--card-accent-glow:${accentGlow}"
+      aria-label="Practise ${escapeHTML(theme.name)}">
+      <div class="theme-card-glow" aria-hidden="true"></div>
+      <div class="theme-card-head">
+        <div class="theme-card-de">${escapeHTML(theme.nameDe)}</div>
+        ${pillHTML}
+      </div>
+      <h3 class="theme-card-title">${escapeHTML(theme.name)}</h3>
+      <p class="theme-card-blurb">${escapeHTML(theme.blurb)}</p>
+      ${topicsHTML}
+      <div class="theme-card-foot">
+        <span class="theme-card-count"><b>${count}</b> questions</span>
+        <span class="theme-card-arrow" aria-hidden="true">${I.cardArrow}</span>
+      </div>
+    </button>`;
+}
+
+// ─── Welcome / theme picker ───────────────────────────────────────────────────
 function renderWelcome() {
   const el = document.createElement('section');
   el.className = 'screen welcome';
+  const regularThemes = window.THEMES.filter(t => !t.isMix);
+  const mixThemes = window.THEMES.filter(t => t.isMix);
+
   el.innerHTML = `
-    <div class="welcome-orb" aria-hidden="true">
-      <div class="orb-ring orb-ring-1"></div>
-      <div class="orb-ring orb-ring-2"></div>
-      <div class="orb-ring orb-ring-3"></div>
-      <div class="orb-core"></div>
+    <header class="welcome-header">
+      <div class="welcome-brand">
+        <span class="brand-orb" aria-hidden="true">
+          <span class="brand-orb-ring brand-orb-ring-1"></span>
+          <span class="brand-orb-ring brand-orb-ring-2"></span>
+          <span class="brand-orb-core"></span>
+        </span>
+        <span class="brand-word">Sprich<span class="title-bang">!</span></span>
+      </div>
+      <div class="welcome-meta-row">
+        <span class="meta-chip">AQA · GCSE German</span>
+        <span class="meta-chip">Speaking practice</span>
+      </div>
+    </header>
+    <div class="welcome-intro">
+      <h1 class="welcome-h1">Pick a theme to practise.</h1>
+      <p class="welcome-sub">Sprich! will ask questions out loud and listen to your answer. Stick with one theme, or shuffle them for a full exam-style run.</p>
     </div>
-    <h1 class="welcome-title">Sprich<span class="title-bang">!</span></h1>
-    <p class="welcome-sub">Answer each question out loud in German</p>
-    <button class="btn-primary btn-xl" id="start-btn">
-      <span>Start</span>${I.arrowLg}
-    </button>
-    <div class="welcome-meta">
-      <div class="meta-chip"><b>27</b> questions</div>
-      <div class="meta-chip">~<b>15</b> min</div>
-      <div class="meta-chip">GCSE Foundation</div>
-    </div>`;
-  el.querySelector('#start-btn').addEventListener('click', startSession);
+    <div class="theme-grid">
+      ${regularThemes.map(t => themeCardHTML(t)).join('')}
+    </div>
+    <div class="theme-grid theme-grid-mix">
+      ${mixThemes.map(t => themeCardHTML(t, true)).join('')}
+    </div>
+    <footer class="welcome-foot">
+      <span>Tip · Answer out loud, full sentences, in German.</span>
+    </footer>`;
+
+  el.querySelectorAll('.theme-card').forEach(btn => {
+    btn.addEventListener('click', () => pickTheme(btn.dataset.themeId));
+  });
   return el;
 }
 
 // ─── Question screen ──────────────────────────────────────────────────────────
 function renderQuestion() {
-  const q = currentQuestion();
+  const q = currentQ();
   const el = document.createElement('section');
   el.className = 'screen question';
   el.innerHTML = `
@@ -128,9 +195,9 @@ function renderQuestion() {
       <div class="q-eyebrow">
         <span class="q-num">Question ${state.qIndex + 1}</span>
         <span class="q-dot">·</span>
-        <span>German</span>
+        <span class="q-topic">${escapeHTML(q.topic || currentTheme()?.name || '')}</span>
       </div>
-      <h2 class="q-text">${escapeHTML(q)}</h2>
+      <h2 class="q-text">${escapeHTML(q.de)}</h2>
       ${waveformHTML('speaking')}
       <div class="mic-area">
         <button class="mic-btn" id="mic-btn" disabled aria-label="Tap to answer">
@@ -140,28 +207,27 @@ function renderQuestion() {
         </button>
         <p class="mic-status" id="mic-status" data-state="speaking">Speaking the question…</p>
         <button class="mic-submit" id="mic-submit" style="display:none">
-          Done ✓
+          Done answering ${I.arrowSm}
         </button>
       </div>
       <div class="transcript-display" id="transcript-display"></div>
     </div>
     <footer class="q-footer">
-      ${state.qIndex > 0 ? `<button class="ghost-btn" id="prev-btn">← Previous</button>` : ''}
       <button class="ghost-btn" id="hear-again-btn">${I.refresh} Hear again</button>
       <button class="ghost-btn" id="skip-btn">Skip ${I.skip}</button>
     </footer>`;
 
-  el.querySelector('#exit-btn').addEventListener('click', exitSession);
+  el.querySelector('#back-btn').addEventListener('click', backToThemes);
   el.querySelector('#mic-btn').addEventListener('click', handleMicTap);
   el.querySelector('#mic-submit').addEventListener('click', () => { stopListening(); submitAnswer(); });
-  el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q));
+  el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q.de));
   el.querySelector('#skip-btn').addEventListener('click', () => { state.transcript = ''; submitAnswer(); });
-  if (state.qIndex > 0) el.querySelector('#prev-btn').addEventListener('click', prevQuestion);
   return el;
 }
 
 // ─── Feedback screen ──────────────────────────────────────────────────────────
 function renderFeedback() {
+  const q = currentQ();
   const el = document.createElement('section');
   el.className = 'screen feedback';
 
@@ -174,7 +240,7 @@ function renderFeedback() {
           <p style="color:var(--text-mute);font-size:15px;margin-top:16px">Marking your answer…</p>
         </div>
       </div>`;
-    el.querySelector('#exit-btn')?.addEventListener('click', exitSession);
+    el.querySelector('#back-btn')?.addEventListener('click', backToThemes);
     return el;
   }
 
@@ -188,8 +254,8 @@ function renderFeedback() {
     <div class="fb-stage">
       <div class="fb-verdict">${verdict}</div>
       <div class="stars-row" id="stars-row">
-        ${Array.from({length: 5}, (_, i) =>
-          `<span class="star ${i < stars ? '' : 'is-empty'}" style="width:64px;height:64px">${starSVG(64, false)}</span>`
+        ${Array.from({ length: 5 }, (_, i) =>
+          `<span class="star ${i < stars ? '' : 'is-empty'}" style="width:64px;height:64px">${starSVG(64, false, i < stars)}</span>`
         ).join('')}
       </div>
       <p class="fb-text">${escapeHTML(feedback)}</p>
@@ -200,28 +266,27 @@ function renderFeedback() {
           <button class="model-play" id="model-play-btn" aria-label="Play model answer">${I.play} Play</button>
         </div>
         <p class="model-de">${escapeHTML(modelAnswer || '—')}</p>
+        ${q?.en ? `<p class="model-en">${escapeHTML(q.en)}</p>` : ''}
       </div>
       <button class="btn-primary btn-lg" id="next-btn">
         <span>${isLast() ? 'See results' : 'Next question'}</span>${I.arrowSm}
       </button>
     </div>`;
 
-  el.querySelector('#exit-btn')?.addEventListener('click', exitSession);
+  el.querySelector('#back-btn')?.addEventListener('click', backToThemes);
   el.querySelector('#next-btn').addEventListener('click', nextQuestion);
   el.querySelector('#model-play-btn').addEventListener('click', () => {
     if (modelAnswer) speakQuestion(modelAnswer);
   });
-
   animateStars(el, stars);
   return el;
 }
 
 function animateStars(container, count) {
-  const slots = container.querySelectorAll('.stars-row .star');
-  slots.forEach((slot, i) => {
+  container.querySelectorAll('.stars-row .star').forEach((slot, i) => {
     if (i < count) {
       setTimeout(() => {
-        slot.innerHTML = starSVG(64, true);
+        slot.innerHTML = starSVG(64, true, true);
         slot.classList.add('is-filled');
         slot.classList.remove('is-empty');
       }, 370 + i * 260);
@@ -231,20 +296,21 @@ function animateStars(container, count) {
 
 // ─── End screen ───────────────────────────────────────────────────────────────
 function renderEnd() {
+  const theme = currentTheme();
   const stars = totalStars();
   const maxS = state.scores.length * 5;
   const pct = maxS > 0 ? Math.round((stars / maxS) * 100) : 0;
   const weak = weakCount();
-  const colors = ['#3b82f6','#10b981','#f59e0b','#a855f7'];
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7'];
 
-  const confetti = Array.from({length: 24}, (_, i) =>
-    `<span class="confetti" style="--x:${(i*41)%100}%;--d:${(i%7)*0.18}s;--c:${colors[i%4]}"></span>`
+  const confetti = Array.from({ length: 24 }, (_, i) =>
+    `<span class="confetti" style="--x:${(i * 41) % 100}%;--d:${(i % 7) * 0.18}s;--c:${colors[i % 4]}"></span>`
   ).join('');
 
   const stripes = state.scores.map((s, i) => `
     <div class="stripe-cell" data-score="${s}">
-      <div class="stripe-bar" style="height:${(s/5)*100}%;--i:${i}"></div>
-      <div class="stripe-num">${i+1}</div>
+      <div class="stripe-bar" style="height:${(s / 5) * 100}%;--i:${i}"></div>
+      <div class="stripe-num">${i + 1}</div>
     </div>`).join('');
 
   const el = document.createElement('section');
@@ -252,7 +318,7 @@ function renderEnd() {
   el.innerHTML = `
     <div class="end-confetti" aria-hidden="true">${confetti}</div>
     <div class="end-card">
-      <div class="end-eyebrow">Session complete</div>
+      <div class="end-eyebrow">Session complete · ${escapeHTML(theme?.name || '')}</div>
       <h1 class="end-title">Gut gemacht! <span class="end-emoji">🎉</span></h1>
       <div class="end-score">
         <div class="end-score-big">
@@ -270,41 +336,55 @@ function renderEnd() {
         <button class="btn-secondary btn-lg" id="weak-btn" ${weak === 0 ? 'disabled' : ''}>
           ${I.weak} Practise weak answers ${weak > 0 ? `<span class="badge-count">${weak}</span>` : ''}
         </button>
+        <button class="btn-secondary btn-lg" id="back-theme-btn">
+          ${I.back} Pick another theme
+        </button>
         <button class="btn-primary btn-lg" id="retry-btn">
-          ${I.refreshLg} Start again
+          ${I.refreshLg} Try this theme again
         </button>
       </div>
     </div>`;
 
-  el.querySelector('#retry-btn').addEventListener('click', startSession);
   el.querySelector('#weak-btn').addEventListener('click', startWeakSession);
+  el.querySelector('#back-theme-btn').addEventListener('click', backToThemes);
+  el.querySelector('#retry-btn').addEventListener('click', () => pickTheme(state.themeId));
   return el;
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
   const app = document.querySelector('.sprich-app');
-  const existing = app.querySelector('.screen');
-  if (existing) existing.remove();
-
-  const screens = {
+  app.querySelector('.screen')?.remove();
+  const map = {
     welcome:  renderWelcome,
     question: renderQuestion,
     feedback: renderFeedback,
     end:      renderEnd,
   };
-  const screenEl = screens[state.screen]?.();
-  if (screenEl) app.appendChild(screenEl);
+  const el = map[state.screen]?.();
+  if (el) app.appendChild(el);
 }
 
 // ─── Session control ──────────────────────────────────────────────────────────
-function startSession() {
+function pickTheme(id) {
   stopAudio();
   window.speechSynthesis.cancel();
+  stopListening();
+
+  const theme = window.THEMES.find(t => t.id === id);
+  const pool = theme.isMix ? shuffle(theme.questions).slice(0, 8) : [...theme.questions];
+
+  // Tint global accent to match the chosen theme
+  const app = document.querySelector('.sprich-app');
+  const accent = `oklch(0.65 0.18 ${theme.accentHue})`;
+  app.style.setProperty('--accent', accent);
+  app.style.setProperty('--accent-speak', accent);
+
   Object.assign(state, {
     screen: 'question',
+    themeId: id,
+    questionPool: pool,
     qIndex: 0,
-    activeQuestions: shuffleArray(Array.from({length: QUESTIONS.length}, (_, i) => i)),
     scores: [],
     streak: 0,
     markingResult: null,
@@ -313,16 +393,17 @@ function startSession() {
     micState: 'speaking',
   });
   render();
-  speakQuestion(currentQuestion());
+  speakQuestion(currentQ().de);
 }
 
 function startWeakSession() {
   stopAudio();
-  const weakIndices = state.scores.map((s, i) => s < 3 ? i : -1).filter(i => i >= 0);
+  const weakQuestions = state.questionPool.filter((_, i) => state.scores[i] < 3);
+  if (weakQuestions.length === 0) return;
   Object.assign(state, {
     screen: 'question',
     qIndex: 0,
-    activeQuestions: shuffleArray(weakIndices),
+    questionPool: weakQuestions,
     scores: [],
     streak: 0,
     markingResult: null,
@@ -331,32 +412,20 @@ function startWeakSession() {
     micState: 'speaking',
   });
   render();
-  speakQuestion(currentQuestion());
+  speakQuestion(currentQ().de);
 }
 
-function exitSession() {
+function backToThemes() {
   stopAudio();
   window.speechSynthesis.cancel();
   stopListening();
   clearListenTimer();
+  // Reset to default palette accent
+  const app = document.querySelector('.sprich-app');
+  app.style.removeProperty('--accent');
+  app.style.removeProperty('--accent-speak');
   state.screen = 'welcome';
   render();
-}
-
-function prevQuestion() {
-  stopAudio();
-  stopListening();
-  clearListenTimer();
-  clearSilenceTimer();
-  // Remove the score recorded for the question we're returning to
-  state.scores.splice(state.qIndex - 1, 1);
-  state.streak = 0;
-  state.qIndex--;
-  state.markingResult = null;
-  state.transcript = '';
-  state.screen = 'question';
-  render();
-  speakQuestion(currentQuestion());
 }
 
 function nextQuestion() {
@@ -369,7 +438,7 @@ function nextQuestion() {
     state.qIndex++;
     state.screen = 'question';
     render();
-    speakQuestion(currentQuestion());
+    speakQuestion(currentQ().de);
   }
 }
 
@@ -380,16 +449,13 @@ function getGermanVoice() {
       const voices = window.speechSynthesis.getVoices();
       const de = voices.filter(v => v.lang.startsWith('de'));
       if (!de.length) return null;
-      return de.find(v => v.name === 'Anna')          // macOS default German
+      return de.find(v => v.name === 'Anna')
           || de.find(v => v.name.includes('Anna'))
-          || de.find(v => v.localService)              // any local German voice
+          || de.find(v => v.localService)
           || de[0];
     };
-
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) return resolve(pick());
-
-    // voices haven't loaded yet — wait for the event
     window.speechSynthesis.onvoiceschanged = () => resolve(pick());
   });
 }
@@ -398,20 +464,17 @@ async function speakQuestion(text) {
   stopAudio();
   setMicState('speaking');
 
-  // Try browser TTS first — sounds more natural on Mac/Windows
   const voice = await getGermanVoice();
   if (voice) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.voice = voice;
     utter.lang = 'de-DE';
     utter.rate = 0.88;
-    utter.onend = () => { if (state.screen === 'question') setMicState('idle'); };
+    utter.onend  = () => { if (state.screen === 'question') setMicState('idle'); };
     utter.onerror = () => cloudflareTTS(text);
     window.speechSynthesis.speak(utter);
     return;
   }
-
-  // No German voice installed — fall back to Cloudflare TTS
   await cloudflareTTS(text);
 }
 
@@ -419,16 +482,14 @@ async function cloudflareTTS(text) {
   try {
     const res = await fetch('/api/speak', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
     });
     if (!res.ok) throw new Error(`TTS ${res.status}`);
-
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     state.audioObj = audio;
-
     audio.onended = () => {
       URL.revokeObjectURL(url);
       state.audioObj = null;
@@ -446,10 +507,7 @@ async function cloudflareTTS(text) {
 }
 
 function stopAudio() {
-  if (state.audioObj) {
-    state.audioObj.pause();
-    state.audioObj = null;
-  }
+  if (state.audioObj) { state.audioObj.pause(); state.audioObj = null; }
   window.speechSynthesis.cancel();
 }
 
@@ -463,18 +521,9 @@ function startListening() {
 
   const rec = new SR();
   rec.lang = 'de-DE';
-  rec.continuous = true;
+  rec.continuous = false;
   rec.interimResults = true;
   state.recognition = rec;
-
-  const SILENCE_MS = 3500;
-
-  const resetSilenceTimer = () => {
-    clearSilenceTimer();
-    state.silenceTimer = setTimeout(() => {
-      if (state.micState === 'listening') { stopListening(); submitAnswer(); }
-    }, SILENCE_MS);
-  };
 
   rec.onresult = (event) => {
     let interim = '', final = '';
@@ -485,48 +534,38 @@ function startListening() {
     state.transcript = final || interim;
     const el = document.getElementById('transcript-display');
     if (el) el.textContent = state.transcript;
-    resetSilenceTimer();
   };
 
   rec.onend = () => {
-    clearSilenceTimer();
     state.recognition = null;
     if (state.micState === 'listening') submitAnswer();
   };
 
   rec.onerror = (e) => {
-    clearSilenceTimer();
     state.recognition = null;
     if (e.error !== 'aborted' && state.screen === 'question') showTextInput();
   };
 
   rec.start();
-  resetSilenceTimer();
 }
 
 function stopListening() {
-  clearSilenceTimer();
-  if (state.recognition) {
-    state.recognition.stop();
-    state.recognition = null;
-  }
+  if (state.recognition) { state.recognition.stop(); state.recognition = null; }
 }
 
 function showTextInput() {
   setMicState('idle');
   const micArea = document.querySelector('.mic-area');
   if (!micArea || micArea.querySelector('.text-fallback')) return;
-
   const div = document.createElement('div');
   div.className = 'text-fallback';
   div.innerHTML = `
-    <p style="font-size:14px;color:var(--text-mute);">Couldn't hear you — type your answer instead</p>
+    <p style="font-size:14px;color:var(--text-mute)">Couldn't hear you — type your answer instead</p>
     <div style="display:flex;gap:8px;width:min(400px,90vw)">
-      <input id="text-answer" type="text" placeholder="Type in German…">
+      <input id="text-answer" type="text" placeholder="Type in German…" />
       <button class="btn-primary" id="text-submit">Submit</button>
     </div>`;
   micArea.appendChild(div);
-
   div.querySelector('#text-answer').focus();
   const submit = () => {
     state.transcript = div.querySelector('#text-answer').value;
@@ -542,15 +581,14 @@ function handleMicTap() {
   else if (state.micState === 'listening') { stopListening(); submitAnswer(); }
 }
 
-function setMicState(s) {
-  state.micState = s;
-  updateMicUI();
-}
+function setMicState(s) { state.micState = s; updateMicUI(); }
 
 function updateMicUI() {
   const { micState } = state;
-  const color   = micState === 'listening' ? 'var(--accent-listen)' : micState === 'speaking' ? 'var(--accent-speak)' : 'rgba(148,163,184,.35)';
-  const active  = micState === 'speaking' || micState === 'listening';
+  const color  = micState === 'listening' ? 'var(--accent-listen)'
+               : micState === 'speaking'  ? 'var(--accent-speak)'
+               : 'rgba(148,163,184,.35)';
+  const active = micState === 'speaking' || micState === 'listening';
 
   const wf = document.querySelector('.waveform');
   if (wf) {
@@ -560,20 +598,17 @@ function updateMicUI() {
       b.style.animationPlayState = active ? 'running' : 'paused';
     });
   }
-
   const btn = document.getElementById('mic-btn');
   if (btn) {
     btn.className = `mic-btn${micState === 'listening' ? ' is-listening' : ''}`;
     btn.disabled = micState === 'speaking';
   }
-
   const status = document.getElementById('mic-status');
   if (status) {
     status.dataset.state = micState;
     if (micState === 'speaking') status.textContent = 'Speaking the question…';
     else if (micState === 'idle') status.textContent = 'Tap the mic to answer';
   }
-
   const done = document.getElementById('mic-submit');
   if (done) done.style.display = micState === 'listening' ? '' : 'none';
 
@@ -596,64 +631,45 @@ function clearListenTimer() {
   if (state.listenInterval) { clearInterval(state.listenInterval); state.listenInterval = null; }
 }
 
-function clearSilenceTimer() {
-  if (state.silenceTimer) { clearTimeout(state.silenceTimer); state.silenceTimer = null; }
-}
-
 // ─── Answer marking ───────────────────────────────────────────────────────────
 async function submitAnswer() {
   if (state.isMarking) return;
   stopListening();
   clearListenTimer();
 
+  const q = currentQ();
   state.isMarking = true;
   state.markingResult = null;
   state.screen = 'feedback';
-  render();  // show loading state
+  render();
 
   try {
     const res = await fetch('/api/mark', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: currentQuestion(), answer: state.transcript})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q.de, answer: state.transcript, level: 'Foundation' }),
     });
     if (!res.ok) throw new Error('mark failed');
+    if (state.screen !== 'feedback') return;
     const result = await res.json();
-
     state.markingResult = result;
     const s = Math.max(1, Math.min(5, result.stars || 1));
     state.scores.push(s);
     state.streak = s >= 4 ? state.streak + 1 : 0;
   } catch {
+    if (state.screen !== 'feedback') return;
     state.markingResult = {
       stars: 1,
       feedback: 'Something went wrong. Please try again.',
       correctedAnswer: '',
-      modelAnswer: ''
+      modelAnswer: '',
     };
     state.scores.push(1);
     state.streak = 0;
   }
 
   state.isMarking = false;
-  render();  // show result
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function shuffleArray(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function escapeHTML(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  render();
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
