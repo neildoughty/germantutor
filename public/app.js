@@ -2,9 +2,10 @@
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
-  screen: 'welcome',    // 'welcome' | 'question' | 'feedback' | 'end'
+  screen: 'language',   // 'language' | 'welcome' | 'question' | 'feedback' | 'end'
+  lang: 'de',           // 'de' | 'fr'
   themeId: null,
-  questionPool: [],     // [{de, en, topic}] for this session
+  questionPool: [],     // [{text, en, topic}] for this session
   qIndex: 0,
   scores: [],           // star score per answered question
   streak: 0,
@@ -26,7 +27,12 @@ const weakCount    = () => state.scores.filter(s => s < 3).length;
 const currentQ     = () => state.questionPool[state.qIndex];
 const totalQ       = () => state.questionPool.length;
 const isLast       = () => state.qIndex >= state.questionPool.length - 1;
-const currentTheme = () => window.THEMES.find(t => t.id === state.themeId);
+
+function getThemes() {
+  return state.lang === 'fr' ? window.THEMES_FR : window.THEMES_DE;
+}
+
+const currentTheme = () => getThemes().find(t => t.id === state.themeId);
 
 function escapeHTML(s) {
   return String(s)
@@ -116,40 +122,53 @@ function themeCardHTML(theme, large = false) {
   const accent     = `oklch(0.7 0.18 ${theme.accentHue})`;
   const accentSoft = `oklch(0.7 0.18 ${theme.accentHue} / 0.18)`;
   const accentGlow = `oklch(0.7 0.18 ${theme.accentHue} / 0.35)`;
-  const count = theme.isMix ? 10 : theme.questions.length;
-  const topicsHTML = theme.isMix ? '' : `
+  const isEmpty    = theme.questions.length === 0;
+  const displayCount = theme.isMix ? Math.min(theme.questions.length, 10) : theme.questions.length;
+
+  const topicsHTML = (theme.isMix || isEmpty) ? '' : `
     <ul class="theme-card-topics">
       ${theme.topics.map(t => `<li>${escapeHTML(t)}</li>`).join('')}
     </ul>`;
   const pillHTML = theme.isMix
-    ? `<div class="theme-card-pill"><span>🎲</span> Random</div>` : '';
+    ? `<div class="theme-card-pill"><span>🎲</span> Random</div>`
+    : isEmpty ? `<div class="theme-card-soon-badge">Coming soon</div>` : '';
+
+  const footHTML = isEmpty
+    ? `<span class="theme-card-count">Questions coming shortly</span>`
+    : `<span class="theme-card-count"><b>${displayCount}</b> questions</span>
+       <span class="theme-card-arrow" aria-hidden="true">${I.cardArrow}</span>`;
 
   return `
-    <button class="theme-card${large ? ' is-large' : ''}${theme.isMix ? ' is-mix' : ''}"
+    <button class="theme-card${large ? ' is-large' : ''}${theme.isMix ? ' is-mix' : ''}${isEmpty ? ' is-coming-soon' : ''}"
       data-theme-id="${theme.id}"
       style="--card-accent:${accent};--card-accent-soft:${accentSoft};--card-accent-glow:${accentGlow}"
-      aria-label="Practise ${escapeHTML(theme.name)}">
+      aria-label="Practise ${escapeHTML(theme.name)}"
+      ${isEmpty ? 'disabled' : ''}>
       <div class="theme-card-glow" aria-hidden="true"></div>
       <div class="theme-card-head">
-        <div class="theme-card-de">${escapeHTML(theme.nameDe)}</div>
+        <div class="theme-card-native">${escapeHTML(theme.nameNative)}</div>
         ${pillHTML}
       </div>
       <h3 class="theme-card-title">${escapeHTML(theme.name)}</h3>
       <p class="theme-card-blurb">${escapeHTML(theme.blurb)}</p>
       ${topicsHTML}
       <div class="theme-card-foot">
-        <span class="theme-card-count"><b>${count}</b> questions</span>
-        <span class="theme-card-arrow" aria-hidden="true">${I.cardArrow}</span>
+        ${footHTML}
       </div>
     </button>`;
 }
 
-// ─── Welcome / theme picker ───────────────────────────────────────────────────
-function renderWelcome() {
+// ─── Language selector ────────────────────────────────────────────────────────
+function renderLanguageSelect() {
   const el = document.createElement('section');
-  el.className = 'screen welcome';
-  const regularThemes = window.THEMES.filter(t => !t.isMix);
-  const mixThemes = window.THEMES.filter(t => t.isMix);
+  el.className = 'screen lang-select';
+
+  const deAccent     = 'oklch(0.72 0.17 50)';
+  const deAccentSoft = 'oklch(0.72 0.17 50 / 0.15)';
+  const deGlow       = 'oklch(0.72 0.17 50 / 0.35)';
+  const frAccent     = 'oklch(0.62 0.22 265)';
+  const frAccentSoft = 'oklch(0.62 0.22 265 / 0.15)';
+  const frGlow       = 'oklch(0.62 0.22 265 / 0.35)';
 
   el.innerHTML = `
     <header class="welcome-header">
@@ -162,13 +181,75 @@ function renderWelcome() {
         <span class="brand-word">Sprich<span class="title-bang">!</span></span>
       </div>
       <div class="welcome-meta-row">
-        <span class="meta-chip">AQA · GCSE German</span>
+        <span class="meta-chip">AQA · GCSE</span>
         <span class="meta-chip">Speaking practice</span>
       </div>
     </header>
     <div class="welcome-intro">
+      <h1 class="welcome-h1">Which language<br>are you practising?</h1>
+      <p class="welcome-sub">Pick a language to start. Sprich! will ask you questions out loud and mark your spoken answers.</p>
+    </div>
+    <div class="lang-grid">
+      <button class="lang-card" data-lang="de"
+        style="--lang-accent:${deAccent};--lang-accent-soft:${deAccentSoft};--lang-glow:${deGlow}">
+        <div class="lang-card-body">
+          <div class="lang-card-eyebrow">AQA GCSE</div>
+          <div class="lang-card-name">Deutsch</div>
+          <div class="lang-card-sub">German</div>
+          <div class="lang-card-arrow">${I.cardArrow}</div>
+        </div>
+        <div class="lang-card-flag lang-flag-de"></div>
+      </button>
+      <button class="lang-card" data-lang="fr"
+        style="--lang-accent:${frAccent};--lang-accent-soft:${frAccentSoft};--lang-glow:${frGlow}">
+        <div class="lang-card-body">
+          <div class="lang-card-eyebrow">AQA GCSE</div>
+          <div class="lang-card-name">Français</div>
+          <div class="lang-card-sub">French</div>
+          <div class="lang-card-arrow">${I.cardArrow}</div>
+        </div>
+        <div class="lang-card-flag lang-flag-fr"></div>
+      </button>
+    </div>
+    <footer class="welcome-foot">
+      <span>Tip · Answer out loud, full sentences, in the target language.</span>
+    </footer>`;
+
+  el.querySelectorAll('.lang-card').forEach(btn => {
+    btn.addEventListener('click', () => pickLanguage(btn.dataset.lang));
+  });
+
+  return el;
+}
+
+// ─── Welcome / theme picker ───────────────────────────────────────────────────
+function renderWelcome() {
+  const el = document.createElement('section');
+  el.className = 'screen welcome';
+  const themes = getThemes();
+  const regularThemes = themes.filter(t => !t.isMix);
+  const mixThemes     = themes.filter(t => t.isMix);
+  const langLabel = state.lang === 'fr' ? 'French' : 'German';
+
+  el.innerHTML = `
+    <header class="welcome-header">
+      <div class="welcome-brand">
+        <span class="brand-orb" aria-hidden="true">
+          <span class="brand-orb-ring brand-orb-ring-1"></span>
+          <span class="brand-orb-ring brand-orb-ring-2"></span>
+          <span class="brand-orb-core"></span>
+        </span>
+        <span class="brand-word">Sprich<span class="title-bang">!</span></span>
+      </div>
+      <div class="welcome-meta-row">
+        <span class="meta-chip">AQA · GCSE ${escapeHTML(langLabel)}</span>
+        <span class="meta-chip">Speaking practice</span>
+        <button class="lang-switch-btn" id="lang-switch-btn">← Languages</button>
+      </div>
+    </header>
+    <div class="welcome-intro">
       <h1 class="welcome-h1">Pick a theme to practise.</h1>
-      <p class="welcome-sub">Sprich! will ask questions out loud and listen to your answer. Stick with one theme, or shuffle them for a full exam-style run.</p>
+      <p class="welcome-sub">Sprich! will ask questions out loud in ${escapeHTML(langLabel)} and listen to your answer. Stick with one theme, or shuffle them for a full exam-style run.</p>
     </div>
     <div class="theme-grid">
       ${regularThemes.map(t => themeCardHTML(t)).join('')}
@@ -177,12 +258,13 @@ function renderWelcome() {
       ${mixThemes.map(t => themeCardHTML(t, true)).join('')}
     </div>
     <footer class="welcome-foot">
-      <span>Tip · Answer out loud, full sentences, in German.</span>
+      <span>Tip · Answer out loud, full sentences, in ${escapeHTML(langLabel)}.</span>
     </footer>`;
 
-  el.querySelectorAll('.theme-card').forEach(btn => {
+  el.querySelectorAll('.theme-card:not([disabled])').forEach(btn => {
     btn.addEventListener('click', () => pickTheme(btn.dataset.themeId));
   });
+  el.querySelector('#lang-switch-btn').addEventListener('click', goToLanguageSelect);
   return el;
 }
 
@@ -199,7 +281,7 @@ function renderQuestion() {
         <span class="q-dot">·</span>
         <span class="q-topic">${escapeHTML(q.topic || currentTheme()?.name || '')}</span>
       </div>
-      <h2 class="q-text">${escapeHTML(q.de)}</h2>
+      <h2 class="q-text">${escapeHTML(q.text)}</h2>
       ${waveformHTML('speaking')}
       <div class="mic-area">
         <button class="mic-btn" id="mic-btn" disabled aria-label="Tap to answer">
@@ -222,7 +304,7 @@ function renderQuestion() {
   el.querySelector('#back-btn').addEventListener('click', backToThemes);
   el.querySelector('#mic-btn').addEventListener('click', handleMicTap);
   el.querySelector('#mic-submit').addEventListener('click', () => stopRecording().then(blob => submitAnswer(blob)));
-  el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q.de));
+  el.querySelector('#hear-again-btn').addEventListener('click', () => speakQuestion(q.text));
   el.querySelector('#skip-btn').addEventListener('click', () => stopRecording().then(() => { state.transcript = ''; submitAnswer(null); }));
   return el;
 }
@@ -358,6 +440,7 @@ function render() {
   const app = document.querySelector('.sprich-app');
   app.querySelector('.screen')?.remove();
   const map = {
+    language: renderLanguageSelect,
     welcome:  renderWelcome,
     question: renderQuestion,
     feedback: renderFeedback,
@@ -368,12 +451,34 @@ function render() {
 }
 
 // ─── Session control ──────────────────────────────────────────────────────────
+function pickLanguage(lang) {
+  state.lang = lang;
+  const app = document.querySelector('.sprich-app');
+  app.classList.remove('lang-de', 'lang-fr');
+  app.classList.add(`lang-${lang}`);
+  state.screen = 'welcome';
+  render();
+}
+
+function goToLanguageSelect() {
+  stopAudio();
+  window.speechSynthesis.cancel();
+  stopRecording();
+  clearListenTimer();
+  const app = document.querySelector('.sprich-app');
+  app.style.removeProperty('--accent');
+  app.style.removeProperty('--accent-speak');
+  app.classList.remove('lang-de', 'lang-fr');
+  state.screen = 'language';
+  render();
+}
+
 function pickTheme(id) {
   stopAudio();
   window.speechSynthesis.cancel();
   stopRecording();
 
-  const theme = window.THEMES.find(t => t.id === id);
+  const theme = getThemes().find(t => t.id === id);
   const pool = theme.isMix ? shuffle(theme.questions).slice(0, 10) : shuffle(theme.questions);
 
   // Tint global accent to match the chosen theme
@@ -445,10 +550,18 @@ function nextQuestion() {
 }
 
 // ─── TTS ──────────────────────────────────────────────────────────────────────
-function getGermanVoice() {
+function getVoice(lang) {
   return new Promise(resolve => {
     const pick = () => {
       const voices = window.speechSynthesis.getVoices();
+      if (lang === 'fr') {
+        const fr = voices.filter(v => v.lang.startsWith('fr-FR'));
+        if (!fr.length) return null;
+        return fr.find(v => v.name === 'Thomas')
+            || fr.find(v => v.name.includes('Thomas'))
+            || fr.find(v => v.localService)
+            || fr[0];
+      }
       const de = voices.filter(v => v.lang.startsWith('de'));
       if (!de.length) return null;
       return de.find(v => v.name === 'Anna')
@@ -466,11 +579,12 @@ async function speakQuestion(text) {
   stopAudio();
   setMicState('speaking');
 
-  const voice = await getGermanVoice();
+  const lang = state.lang || 'de';
+  const voice = await getVoice(lang);
   if (voice) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.voice = voice;
-    utter.lang = 'de-DE';
+    utter.lang = lang === 'fr' ? 'fr-FR' : 'de-DE';
     utter.rate = 0.88;
     utter.onend  = () => { if (state.screen === 'question') setMicState('idle'); };
     utter.onerror = () => cloudflareTTS(text);
@@ -485,7 +599,7 @@ async function cloudflareTTS(text) {
     const res = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, lang: state.lang || 'de' }),
     });
     if (!res.ok) throw new Error(`TTS ${res.status}`);
     const blob = await res.blob();
@@ -567,7 +681,7 @@ async function transcribeAudio(blob) {
         const res = await fetch('/api/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio: base64, mimeType: blob.type }),
+          body: JSON.stringify({ audio: base64, mimeType: blob.type, lang: state.lang || 'de' }),
         });
         const { transcript } = res.ok ? await res.json() : {};
         resolve(transcript || '');
@@ -673,7 +787,7 @@ async function submitAnswer(blob = null) {
     const res = await fetch('/api/mark', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q.de, answer: state.transcript, level: 'Foundation' }),
+      body: JSON.stringify({ question: q.text, answer: state.transcript, level: 'Foundation', lang: state.lang || 'de' }),
     });
     if (!res.ok) throw new Error('mark failed');
     if (state.screen !== 'feedback') return;

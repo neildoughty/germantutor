@@ -355,7 +355,7 @@ body {
   position: relative;
   z-index: 1;
 }
-.theme-card-de {
+.theme-card-native {
   font-size: 12px;
   font-style: italic;
   color: var(--card-accent);
@@ -1151,4 +1151,207 @@ body {
   font-style: normal;
   font-weight: 600;
   color: var(--text-mute);
+}
+
+/* ─── Language-specific palette overrides ──────────────────────────────────── */
+.sprich-app.lang-de {
+  --accent: oklch(0.72 0.17 50);
+  --accent-speak: oklch(0.72 0.17 50);
+  --bg-grad:
+    radial-gradient(1200px 700px at 80% -10%, rgba(220, 38, 38, .11), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(234, 179, 8, .09), transparent 60%),
+    #0f172a;
+}
+
+.sprich-app.lang-fr {
+  --accent: oklch(0.62 0.22 265);
+  --accent-speak: oklch(0.62 0.22 265);
+  --bg-grad:
+    radial-gradient(1200px 700px at 80% -10%, rgba(0, 35, 149, .16), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(237, 41, 57, .09), transparent 60%),
+    #0f172a;
+}
+
+/* ─── Language selector ─────────────────────────────────────────────────────── */
+.lang-select {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 28px 48px 32px;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+.lang-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  max-width: 860px;
+  align-self: center;
+  width: 100%;
+}
+
+.lang-card {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  background: linear-gradient(180deg, color-mix(in oklch, var(--panel) 90%, white), var(--panel));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.04) inset,
+    0 12px 36px -16px rgba(0,0,0,.5),
+    0 0 0 1px var(--border);
+  color: var(--text);
+  overflow: hidden;
+  transition: transform .18s cubic-bezier(.2,.7,.2,1), box-shadow .25s ease;
+  min-height: 260px;
+}
+
+.lang-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(180deg, color-mix(in oklch, var(--lang-accent) 50%, transparent), transparent 55%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: .5;
+}
+
+.lang-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.06) inset,
+    0 24px 56px -16px rgba(0,0,0,.6),
+    0 0 0 1px color-mix(in oklch, var(--lang-accent) 35%, var(--border)),
+    0 0 80px -10px var(--lang-glow);
+}
+
+.lang-card:active { transform: translateY(-1px); }
+
+.lang-card-body {
+  flex: 1;
+  padding: 28px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lang-card-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--lang-accent);
+  margin-bottom: 4px;
+}
+
+.lang-card-name {
+  font-size: clamp(48px, 6vw, 72px);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.lang-card-sub {
+  font-size: 16px;
+  color: var(--text-mute);
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+.lang-card-arrow {
+  margin-top: auto;
+  padding-top: 20px;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--lang-accent-soft);
+  color: var(--lang-accent);
+  transition: transform .2s ease, background .2s ease;
+}
+
+.lang-card:hover .lang-card-arrow {
+  transform: translateX(4px);
+  background: var(--lang-accent);
+  color: var(--bg);
+}
+
+.lang-card-flag {
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.lang-flag-de {
+  background: linear-gradient(180deg,
+    #1c1c1c 0% 33.33%,
+    #DD0000 33.33% 66.67%,
+    #FFCE00 66.67% 100%
+  );
+}
+
+.lang-flag-fr {
+  background: linear-gradient(90deg,
+    #002395 0% 33.33%,
+    #ffffff 33.33% 66.67%,
+    #ED2939 66.67% 100%
+  );
+}
+
+/* ─── Theme card coming-soon state ─────────────────────────────────────────── */
+.theme-card.is-coming-soon {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.theme-card-soon-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-mute);
+  background: rgba(148,163,184,.1);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* ─── Language switcher button ──────────────────────────────────────────────── */
+.lang-switch-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+  letter-spacing: .02em;
+}
+
+.lang-switch-btn:hover {
+  color: var(--text);
+  background: rgba(148,163,184,.08);
+  border-color: color-mix(in oklch, var(--accent) 30%, var(--border));
+}
+
+@media (max-width: 900px) {
+  .lang-grid { grid-template-columns: 1fr; }
+  .lang-select { padding: 24px 24px 28px; }
 }

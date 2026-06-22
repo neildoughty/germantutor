@@ -8,9 +8,10 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const SYSTEM_PROMPT = `You are a friendly, encouraging German language tutor helping a 13-year-old UK student prepare for their Year 8 oral assessment. Your job is to mark their spoken German answers.
+const SYSTEM_PROMPTS = {
+  de: `You are a friendly, encouraging German language tutor helping a 13-year-old UK student prepare for their GCSE oral assessment. Your job is to mark their spoken German answers.
 
-The student is at KS3 level. They are learning:
+The student is learning:
 - Present tense (ich bin, ich habe, ich mache, ich esse, etc.)
 - Perfect tense for past events (ich habe gemacht, ich bin gefahren)
 - Future with "werden" (ich werde machen) and "möchten" (ich möchte fahren)
@@ -39,13 +40,47 @@ Respond ONLY in this JSON format, with no preamble or markdown:
   "feedback": "Great answer! You used the perfect tense correctly. Next time, try to add a reason using 'weil'.",
   "correctedAnswer": "Ich habe Fußball gespielt, weil es Spaß macht.",
   "modelAnswer": "Letztes Wochenende habe ich Fußball mit meinem Freund gespielt. Es war toll!"
-}`;
+}`,
+
+  fr: `You are a friendly, encouraging French language tutor helping a 13-year-old UK student prepare for their GCSE oral assessment. Your job is to mark their spoken French answers.
+
+The student is learning:
+- Present tense (je suis, j'ai, je fais, je mange, etc.)
+- Perfect tense for past events (j'ai fait, je suis allé(e))
+- Future tense (je ferai, j'irai) and near future (je vais faire)
+- Common vocabulary: family, hobbies, school, food, travel, daily routine
+- Opinions with reasons: je pense que... parce que..., j'aime... parce que...
+
+When marking:
+1. Award stars 1-5 (see criteria below)
+2. Give a SHORT, warm, encouraging feedback comment in English (2-3 sentences max)
+3. If there are errors, gently identify the most important one and give the correct version
+4. Provide a "model answer" — a short, correct example French answer they could have given
+
+Star criteria:
+- 1 star: No attempt or completely incomprehensible
+- 2 stars: Some French words used but answer is largely incorrect or incomplete
+- 3 stars: Answer is understandable and relevant but has grammatical errors (wrong tense, wrong verb form, missing agreement)
+- 4 stars: Good answer with only minor errors
+- 5 stars: Excellent — correct vocabulary, grammar and tense for their level
+
+Tone: Be like an encouraging teacher, not a strict examiner. Celebrate effort. Use phrases like "Great try!", "Almost perfect!", "Good use of the perfect tense there!"
+
+Respond ONLY in this JSON format, with no preamble or markdown:
+{
+  "stars": 4,
+  "feedback": "Great answer! You used the perfect tense correctly. Next time, try to add a reason using 'parce que'.",
+  "correctedAnswer": "J'ai joué au football parce que c'est amusant.",
+  "modelAnswer": "Le week-end dernier, j'ai joué au football avec mon ami. C'était super!"
+}`,
+};
 
 // POST /api/mark
 app.post('/api/mark', async (req, res) => {
-  const { question, answer, level } = req.body;
+  const { question, answer, level, lang = 'de' } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
 
+  const systemPrompt = SYSTEM_PROMPTS[lang] || SYSTEM_PROMPTS.de;
   const levelNote = level === 'Higher'
     ? 'The student is attempting Higher tier (grades 4–9). Reward use of multiple tenses, complex structures, and extended answers.'
     : 'The student is attempting Foundation tier (grades 1–5). Focus on basic vocabulary and simple grammatical structures.';
@@ -56,7 +91,7 @@ app.post('/api/mark', async (req, res) => {
       model: 'llama-3.3-70b-versatile',
       max_tokens: 512,
       messages: [
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\n${levelNote}` },
+        { role: 'system', content: `${systemPrompt}\n\n${levelNote}` },
         { role: 'user', content: `Question: ${question}\nStudent's answer: ${answer || '(no answer given)'}` }
       ]
     });
@@ -69,27 +104,32 @@ app.post('/api/mark', async (req, res) => {
   }
 });
 
-// GET /api/syllabus — returns the AQA GCSE German theme/topic structure
+// GET /api/syllabus?lang=de|fr — returns the AQA GCSE theme/topic structure
 app.get('/api/syllabus', (req, res) => {
-  res.json(require('./data/aqa-gcse-german.json'));
+  const lang = req.query.lang === 'fr' ? 'fr' : 'de';
+  res.json(require(`./data/aqa-gcse-${lang === 'fr' ? 'french' : 'german'}.json`));
 });
 
 // POST /api/questions/generate
-// Body: { theme, level, count }
+// Body: { theme, level, count, lang }
 //   theme  — theme name, or "all" for a quickfire mix across every theme
 //   level  — "Foundation" | "Higher"
 //   count  — number of questions (default 5)
+//   lang   — "de" | "fr" (default "de")
 app.post('/api/questions/generate', async (req, res) => {
-  const { theme, level, count = 5 } = req.body;
+  const { theme, level, count = 5, lang = 'de' } = req.body;
   if (!level) return res.status(400).json({ error: 'level required' });
+
+  const isFrench = lang === 'fr';
+  const langName = isFrench ? 'French' : 'German';
 
   const levelGuide = level === 'Higher'
     ? 'Higher tier: complex vocabulary, multiple tenses (present, perfect, future, imperfect), subordinate clauses, opinions with justification'
     : 'Foundation tier: simple vocabulary, mainly present tense with some perfect and future tense, straightforward questions';
 
   const scope = (!theme || theme === 'all')
-    ? 'Spread questions evenly across all three AQA GCSE German themes: People & lifestyle, Popular culture, and Communication & the world around us.'
-    : `Focus on the AQA GCSE German theme: "${theme}". Spread questions across the different topics within this theme.`;
+    ? `Spread questions evenly across all three AQA GCSE ${langName} themes: People & lifestyle, Popular culture, and Communication & the world around us.`
+    : `Focus on the AQA GCSE ${langName} theme: "${theme}". Spread questions across the different topics within this theme.`;
 
   try {
     const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -99,13 +139,13 @@ app.post('/api/questions/generate', async (req, res) => {
       messages: [
         {
           role: 'user',
-          content: `Generate exactly ${count} spoken German questions for a GCSE oral practice app.
+          content: `Generate exactly ${count} spoken ${langName} questions for a GCSE oral practice app.
 
 ${scope}
 Level: ${level} — ${levelGuide}
 
 Requirements:
-- Questions must be in German only
+- Questions must be in ${langName} only
 - Vary the types: descriptions, opinions, past experiences, future plans, comparisons
 - Natural oral exam questions, not written exercises
 - Return ONLY a valid JSON array of strings, no explanation, no markdown:
@@ -126,19 +166,19 @@ Requirements:
 
 // POST /api/speak
 app.post('/api/speak', async (req, res) => {
-  const { text } = req.body;
+  const { text, lang = 'de' } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
 
   try {
     const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/myshell-ai/melo-tts`,
+      `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/myshell-ai/melotts`,
       {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ text, lang: 'DE' })
+        body: JSON.stringify({ prompt: text, lang })
       }
     );
 
@@ -156,9 +196,9 @@ app.post('/api/speak', async (req, res) => {
 });
 
 // POST /api/transcribe
-// Body: { audio: base64String, mimeType: string }
+// Body: { audio: base64String, mimeType: string, lang: string }
 app.post('/api/transcribe', async (req, res) => {
-  const { audio, mimeType } = req.body;
+  const { audio, mimeType, lang = 'de' } = req.body;
   if (!audio) return res.status(400).json({ error: 'audio required' });
 
   try {
@@ -169,7 +209,7 @@ app.post('/api/transcribe', async (req, res) => {
     const result = await client.audio.transcriptions.create({
       file,
       model: 'whisper-large-v3-turbo',
-      language: 'de',
+      language: lang,
     });
 
     res.json({ transcript: result.text || '' });
