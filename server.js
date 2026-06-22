@@ -220,4 +220,4 @@ app.post('/api/transcribe', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Sprich! running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Vox! running on http://localhost:${PORT}`));

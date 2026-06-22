@@ -178,7 +178,7 @@ function renderLanguageSelect() {
           <span class="brand-orb-ring brand-orb-ring-2"></span>
           <span class="brand-orb-core"></span>
         </span>
-        <span class="brand-word">Sprich<span class="title-bang">!</span></span>
+        <span class="brand-word">Vox<span class="title-bang">!</span></span>
       </div>
       <div class="welcome-meta-row">
         <span class="meta-chip">AQA · GCSE</span>
@@ -187,7 +187,7 @@ function renderLanguageSelect() {
     </header>
     <div class="welcome-intro">
       <h1 class="welcome-h1">Which language<br>are you practising?</h1>
-      <p class="welcome-sub">Pick a language to start. Sprich! will ask you questions out loud and mark your spoken answers.</p>
+      <p class="welcome-sub">Pick a language to start. Vox! will ask you questions out loud and mark your spoken answers.</p>
     </div>
     <div class="lang-grid">
       <button class="lang-card" data-lang="de"
@@ -232,6 +232,7 @@ function renderWelcome() {
   const langLabel = state.lang === 'fr' ? 'French' : 'German';
 
   el.innerHTML = `
+    <div class="lang-stripe lang-stripe-${state.lang}"></div>
     <header class="welcome-header">
       <div class="welcome-brand">
         <span class="brand-orb" aria-hidden="true">
@@ -239,7 +240,7 @@ function renderWelcome() {
           <span class="brand-orb-ring brand-orb-ring-2"></span>
           <span class="brand-orb-core"></span>
         </span>
-        <span class="brand-word">Sprich<span class="title-bang">!</span></span>
+        <span class="brand-word">Vox<span class="title-bang">!</span></span>
       </div>
       <div class="welcome-meta-row">
         <span class="meta-chip">AQA · GCSE ${escapeHTML(langLabel)}</span>
@@ -249,7 +250,7 @@ function renderWelcome() {
     </header>
     <div class="welcome-intro">
       <h1 class="welcome-h1">Pick a theme to practise.</h1>
-      <p class="welcome-sub">Sprich! will ask questions out loud in ${escapeHTML(langLabel)} and listen to your answer. Stick with one theme, or shuffle them for a full exam-style run.</p>
+      <p class="welcome-sub">Vox! will ask questions out loud in ${escapeHTML(langLabel)} and listen to your answer. Stick with one theme, or shuffle them for a full exam-style run.</p>
     </div>
     <div class="theme-grid">
       ${regularThemes.map(t => themeCardHTML(t)).join('')}

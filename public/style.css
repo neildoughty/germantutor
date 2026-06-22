@@ -1,4 +1,4 @@
-/* Sprich! — dark, game-like German speaking tutor */
+/* Vox! — GCSE language speaking tutor */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -1158,8 +1158,9 @@ body {
   --accent: oklch(0.72 0.17 50);
   --accent-speak: oklch(0.72 0.17 50);
   --bg-grad:
-    radial-gradient(1200px 700px at 80% -10%, rgba(220, 38, 38, .11), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgba(234, 179, 8, .09), transparent 60%),
+    radial-gradient(1400px 800px at 85% -5%,  rgba(220, 38, 38, .22),  transparent 55%),
+    radial-gradient(1000px 700px at -10% 110%, rgba(234, 179, 8, .18),  transparent 60%),
+    radial-gradient(600px  500px at 50% 50%,   rgba(30, 30, 30, .10),   transparent 70%),
     #0f172a;
 }
 
@@ -1167,9 +1168,33 @@ body {
   --accent: oklch(0.62 0.22 265);
   --accent-speak: oklch(0.62 0.22 265);
   --bg-grad:
-    radial-gradient(1200px 700px at 80% -10%, rgba(0, 35, 149, .16), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgba(237, 41, 57, .09), transparent 60%),
+    radial-gradient(1400px 800px at 85% -5%,  rgba(237, 41, 57, .16),  transparent 55%),
+    radial-gradient(1000px 700px at -10% 110%, rgba(0, 35, 149, .24),   transparent 60%),
+    radial-gradient(600px  500px at 50% 50%,   rgba(240, 240, 255, .03), transparent 70%),
     #0f172a;
+}
+
+/* ─── Flag stripe on theme picker ───────────────────────────────────────────── */
+.lang-stripe {
+  height: 5px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.lang-stripe-de {
+  background: linear-gradient(90deg,
+    #1c1c1c 0% 33.33%,
+    #DD0000 33.33% 66.67%,
+    #FFCE00 66.67% 100%
+  );
+}
+
+.lang-stripe-fr {
+  background: linear-gradient(90deg,
+    #002395 0% 33.33%,
+    #ffffff 33.33% 66.67%,
+    #ED2939 66.67% 100%
+  );
 }
 
 /* ─── Language selector ─────────────────────────────────────────────────────── */
