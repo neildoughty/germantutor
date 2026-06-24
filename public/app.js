@@ -501,7 +501,7 @@ function pickTheme(id) {
     micState: 'speaking',
   });
   render();
-  speakQuestion(currentQ().de);
+  speakQuestion(currentQ().text);
 }
 
 function startWeakSession() {
@@ -520,7 +520,7 @@ function startWeakSession() {
     micState: 'speaking',
   });
   render();
-  speakQuestion(currentQ().de);
+  speakQuestion(currentQ().text);
 }
 
 function backToThemes() {
@@ -546,7 +546,7 @@ function nextQuestion() {
     state.qIndex++;
     state.screen = 'question';
     render();
-    speakQuestion(currentQ().de);
+    speakQuestion(currentQ().text);
   }
 }
 
